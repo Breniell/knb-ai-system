@@ -1,0 +1,153 @@
+# KNB AI System — Docker Compose
+#
+# Mode par défaut (Firebase-only, sans dépendances locales) :
+#   docker compose up
+#   Lance : nginx + server + ai-services + client
+#
+# Mode complet (avec Postgres, Redis, Qdrant) :
+#   docker compose --profile full up
+#   Lance tout, y compris les services de base de données locaux.
+
+name: knb-ai-system
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["full"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-knb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-knb_password}
+      POSTGRES_DB: ${POSTGRES_DB:-knb}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["full"]
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    profiles: ["full"]
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6333/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://knb:knb_password@postgres:5432/knb?schema=public}
+      REDIS_URL: ${REDIS_URL:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-knb-ai-system}
+      FIREBASE_STORAGE_BUCKET: ${FIREBASE_STORAGE_BUCKET:-knb-ai-system.firebasestorage.app}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_AUTH_EMULATOR_HOST: ${FIREBASE_AUTH_EMULATOR_HOST:-}
+      BOOTSTRAP_ADMIN_EMAILS: ${BOOTSTRAP_ADMIN_EMAILS:-admin@knb.local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      AI_SERVICE_PUBLIC_URL: ${AI_SERVICE_PUBLIC_URL:-http://ai-services:8000}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  ai-services:
+    build:
+      context: .
+      dockerfile: ai-services/Dockerfile
+    env_file:
+      - .env
+    environment:
+      AI_SERVICE_PORT: ${AI_SERVICE_PORT:-8000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      WEB_LEARNING_ENABLED: ${WEB_LEARNING_ENABLED:-false}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-knb-ai-system}
+      FIREBASE_STORAGE_BUCKET: ${FIREBASE_STORAGE_BUCKET:-knb-ai-system.firebasestorage.app}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIRESTORE_EMULATOR_HOST: ${FIRESTORE_EMULATOR_HOST:-}
+      FIRESTORE_WORKFLOW_COLLECTION: ${FIRESTORE_WORKFLOW_COLLECTION:-workflowExecutions}
+    ports:
+      - "${AI_SERVICE_PORT:-8000}:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+      VITE_WS_URL: ${VITE_WS_URL:-http://localhost:8080}
+      VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+      VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-knb-ai-system}
+      VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-knb-ai-system.firebaseapp.com}
+      VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-knb-ai-system.firebasestorage.app}
+      VITE_FIREBASE_AUTH_EMULATOR_URL: ${VITE_FIREBASE_AUTH_EMULATOR_URL:-}
+      VITE_FIRESTORE_EMULATOR_HOST: ${VITE_FIRESTORE_EMULATOR_HOST:-}
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5173"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      - server
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    depends_on:
+      - client
+      - server
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:

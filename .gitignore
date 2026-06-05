@@ -1,0 +1,28 @@
+node_modules
+dist
+.DS_Store
+
+# dotenv
+.env
+.env.*.local
+
+# firebase service account — contient des clés privées
+firebase-service-account.json
+
+# logs
+*.log
+
+# python
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+.mypy_cache/
+ai-services.backup/
+
+# prisma
+server/prisma/migrations/
+
+# editor
+.idea/
+.vscode/

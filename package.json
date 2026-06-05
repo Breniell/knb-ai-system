@@ -1,0 +1,23 @@
+{
+  "name": "knb-ai-system",
+  "private": true,
+  "packageManager": "npm@10",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client \"npm run dev -w @knb/server\" \"npm run dev -w @knb/client\"",
+    "dev:client": "npm run dev -w client",
+    "dev:server": "npm run dev -w server",
+    "build": "npm run build -w client && npm run build -w server",
+    "typecheck": "npm run typecheck -w client && npm run typecheck -w server",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down -v",
+    "format": "npm run format -w client && npm run format -w server",
+    "lint": "npm run lint -w client && npm run lint -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
