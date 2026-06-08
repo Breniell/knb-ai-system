@@ -21,27 +21,39 @@ const UpdateTaskSchema = z.object({
 
 tasksRouter.get("/tasks", requireAuth, asyncHandler(async (req, res) => {
   const projectId = req.query.projectId as string | undefined;
-  const tasks = await prisma.task.findMany({
-    where: projectId ? { projectId } : undefined,
-    orderBy: { createdAt: "desc" },
-  });
-  return ok(res, { ok: true, tasks });
+  try {
+    const tasks = await prisma.task.findMany({
+      where: projectId ? { projectId } : undefined,
+      orderBy: { createdAt: "desc" },
+    });
+    return ok(res, { ok: true, tasks });
+  } catch {
+    return ok(res, { ok: true, tasks: [], dbAvailable: false });
+  }
 }));
 
 tasksRouter.post("/tasks", requireAuth, asyncHandler(async (req, res) => {
   const parsed = CreateTaskSchema.safeParse(req.body);
   if (!parsed.success) return error(res, "BAD_REQUEST", "Invalid task payload", 400);
-  const task = await prisma.task.create({ data: parsed.data });
-  return ok(res, { ok: true, task });
+  try {
+    const task = await prisma.task.create({ data: parsed.data });
+    return ok(res, { ok: true, task });
+  } catch {
+    return error(res, "DB_UNAVAILABLE", "Database unavailable — task not saved", 503);
+  }
 }));
 
 tasksRouter.patch("/tasks/:taskId/status", requireAuth, asyncHandler(async (req, res) => {
   const parsed = UpdateTaskSchema.safeParse(req.body);
   if (!parsed.success) return error(res, "BAD_REQUEST", "Invalid status payload", 400);
-  const task = await prisma.task.update({
-    where: { id: req.params.taskId },
-    data: { status: parsed.data.status },
-  });
-  return ok(res, { ok: true, task });
+  try {
+    const task = await prisma.task.update({
+      where: { id: req.params.taskId },
+      data: { status: parsed.data.status },
+    });
+    return ok(res, { ok: true, task });
+  } catch {
+    return error(res, "DB_UNAVAILABLE", "Database unavailable — status not updated", 503);
+  }
 }));
 

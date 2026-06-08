@@ -490,8 +490,14 @@ class LlmClient:
                 transient = any(
                     s in msg for s in ("429", "rate", "limit", "quota", "timeout", "timed out", "503", "502", "overloaded", "unavailable")
                 )
-                if not transient or attempt >= _TRANSIENT_MAX_RETRIES:
-                    # Avant d'abandonner sur une erreur transitoire : bascule sur le secours.
+                # Limite journalière (TPD) : inutile de réessayer, basculer immédiatement
+                retry_secs = _retry_after_seconds(exc)
+                is_daily_limit = transient and (
+                    "per day" in msg or "tpd" in msg or "per_day" in msg
+                    or (retry_secs is not None and retry_secs > 60)
+                )
+                if not transient or attempt >= _TRANSIENT_MAX_RETRIES or is_daily_limit:
+                    # Bascule sur le provider de secours avant d'abandonner
                     if transient and self._secondary is not None:
                         try:
                             logger.warning("[LLM] %s indisponible → bascule sur le secours %s",
@@ -511,7 +517,7 @@ class LlmClient:
                                            self._secondary["provider"], str(sec_exc)[:120])
                     raise
                 last_exc = exc
-                delay = _retry_after_seconds(exc) or (0.8 * (2 ** attempt))
+                delay = retry_secs or (0.8 * (2 ** attempt))
                 logger.warning(
                     "[LLM/%s] erreur transitoire (tentative %d) : %s → attente %.1fs",
                     self._provider, attempt + 1, msg[:120], delay,

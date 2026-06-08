@@ -27,7 +27,11 @@ services:
       - key: FIREBASE_STORAGE_BUCKET
         value: knb-ai-system.firebasestorage.app
       - key: WEB_LEARNING_ENABLED
-        value: "true"
+        value: "false"
+      # fast = 2-3 appels LLM/agent (économise la quota gratuite Groq 100k TPD).
+      # Passer à "balanced" ou "quality" si vous avez une clé payante ou OpenRouter.
+      - key: KNB_PERF_PROFILE
+        value: "fast"
       - key: NODE_ENV
         value: production
 

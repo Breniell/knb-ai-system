@@ -56,16 +56,20 @@ aiRouter.post("/ai/run", requireAuth, asyncHandler(async (req, res) => {
     workflow_id?: string;
   };
 
-  await prisma.aiExecution.create({
-    data: {
-      projectId: parsed.data.project_id,
-      taskId: parsed.data.task_id ?? null,
-      prompt: parsed.data.input,
-      selectedAgent: result.selected_agent ?? result.selected_agents?.join(",") ?? "unknown",
-      result: result.response ?? result.responses?.map((x) => x.summary).filter(Boolean).join("\n") ?? JSON.stringify(data),
-      metadata: { ...(result.workflow_id ? { workflowId: result.workflow_id } : {}), userId },
-    },
-  });
+  try {
+    await prisma.aiExecution.create({
+      data: {
+        projectId: parsed.data.project_id,
+        taskId: parsed.data.task_id ?? null,
+        prompt: parsed.data.input,
+        selectedAgent: result.selected_agent ?? result.selected_agents?.join(",") ?? "unknown",
+        result: result.response ?? result.responses?.map((x) => x.summary).filter(Boolean).join("\n") ?? JSON.stringify(data),
+        metadata: { ...(result.workflow_id ? { workflowId: result.workflow_id } : {}), userId },
+      },
+    });
+  } catch {
+    // DB unavailable — execution result already returned to client, log silently
+  }
 
   return ok(res, data);
 }));

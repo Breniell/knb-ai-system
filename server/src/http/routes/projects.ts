@@ -16,11 +16,15 @@ const CreateProjectSchema = z.object({
 });
 
 projectsRouter.get("/projects", requireAuth, asyncHandler(async (_req, res) => {
-  const projects = await prisma.project.findMany({
-    include: { tasks: true, owner: { select: { id: true, email: true, role: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-  return ok(res, { ok: true, projects });
+  try {
+    const projects = await prisma.project.findMany({
+      include: { tasks: true, owner: { select: { id: true, email: true, role: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return ok(res, { ok: true, projects });
+  } catch {
+    return ok(res, { ok: true, projects: [], dbAvailable: false });
+  }
 }));
 
 projectsRouter.post("/projects", requireAuth, requireRole(["ADMIN", "MANAGER"]), asyncHandler(async (req, res) => {
@@ -29,9 +33,13 @@ projectsRouter.post("/projects", requireAuth, requireRole(["ADMIN", "MANAGER"]),
   const ownerId = parsed.data.ownerId ?? req.user?.sub;
   if (!ownerId) return error(res, "BAD_REQUEST", "Missing ownerId", 400);
 
-  const project = await prisma.project.create({
-    data: { name: parsed.data.name, description: parsed.data.description, ownerId },
-  });
-  return ok(res, { ok: true, project });
+  try {
+    const project = await prisma.project.create({
+      data: { name: parsed.data.name, description: parsed.data.description, ownerId },
+    });
+    return ok(res, { ok: true, project });
+  } catch {
+    return error(res, "DB_UNAVAILABLE", "Database unavailable — project not saved", 503);
+  }
 }));
 
