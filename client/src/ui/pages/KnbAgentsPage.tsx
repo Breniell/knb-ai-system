@@ -49,8 +49,17 @@ export function KnbAgentsPage() {
         followups: resp?.followups ?? [],
         score: resp?.score,
       });
-    } catch {
-      push({ id: `e-${Date.now()}`, role: "assistant", content: "Connexion impossible. Vérifiez que le service IA (port 8000) et le serveur (port 3001) sont démarrés." });
+    } catch (err) {
+      let msg = "Connexion impossible au serveur.";
+      if (err instanceof Error) {
+        try {
+          const parsed = JSON.parse(err.message) as { error?: { message?: string } };
+          msg = parsed?.error?.message ?? err.message;
+        } catch {
+          msg = err.message || msg;
+        }
+      }
+      push({ id: `e-${Date.now()}`, role: "assistant", content: msg });
     } finally {
       setLoading(false);
     }

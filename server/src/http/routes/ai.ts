@@ -31,16 +31,23 @@ aiRouter.post("/ai/run", requireAuth, asyncHandler(async (req, res) => {
   const parsed = RunSchema.safeParse(req.body);
   if (!parsed.success) return error(res, "BAD_REQUEST", "Invalid payload", 400);
 
-  const upstream = await fetchAiService("/api/agents/run", {
-    method: "POST",
-    body: JSON.stringify({
-      input: parsed.data.input,
-      project_id: parsed.data.project_id,
-      task_id: parsed.data.task_id,
-      user_id: userId,
-      agent_id: parsed.data.agent_id ?? "default",
-    }),
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetchAiService("/api/agents/run", {
+      method: "POST",
+      body: JSON.stringify({
+        input: parsed.data.input,
+        project_id: parsed.data.project_id,
+        task_id: parsed.data.task_id,
+        user_id: userId,
+        agent_id: parsed.data.agent_id ?? "default",
+      }),
+    });
+  } catch {
+    return error(res, "AI_SERVICE_UNAVAILABLE",
+      "Le service IA est inaccessible. Sur le plan gratuit Render il peut mettre 30-60 s à démarrer — réessayez dans quelques secondes.",
+      503);
+  }
 
   if (!upstream.ok) {
     const txt = await upstream.text().catch(() => "");
@@ -79,10 +86,17 @@ aiRouter.post("/ai/chat", requireAuth, asyncHandler(async (req, res) => {
   const parsed = ChatSchema.safeParse(req.body);
   if (!parsed.success) return error(res, "BAD_REQUEST", "Invalid payload", 400);
 
-  const upstream = await fetchAiService("/api/agents/chat", {
-    method: "POST",
-    body: JSON.stringify(parsed.data),
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetchAiService("/api/agents/chat", {
+      method: "POST",
+      body: JSON.stringify(parsed.data),
+    });
+  } catch {
+    return error(res, "AI_SERVICE_UNAVAILABLE",
+      "Le service IA est inaccessible. Sur le plan gratuit Render il peut mettre 30-60 s à démarrer — réessayez dans quelques secondes.",
+      503);
+  }
 
   if (!upstream.ok) {
     const txt = await upstream.text().catch(() => "");
