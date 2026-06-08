@@ -196,11 +196,10 @@ class LlmClient:
 
         if settings.gemini_api_key:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=settings.gemini_api_key)
-                self._client = genai
+                from google import genai as google_genai
+                self._client = google_genai.Client(api_key=settings.gemini_api_key)
                 self._provider = "gemini"
-                self._model = "gemini-2.0-flash-exp"
+                self._model = "gemini-2.0-flash"
                 logger.info("[LLM] Google Gemini 2.0 Flash prêt")
                 return
             except Exception as e:
@@ -257,11 +256,8 @@ class LlmClient:
         """Embeddings réels via Gemini si disponible, sinon désactivé."""
         if settings.gemini_api_key:
             try:
-                import google.generativeai as genai
-                # genai déjà configuré si provider principal == gemini, sinon configurer
-                if self._provider != "gemini":
-                    genai.configure(api_key=settings.gemini_api_key)
-                self._embedder = genai
+                from google import genai as google_genai
+                self._embedder = google_genai.Client(api_key=settings.gemini_api_key)
                 self._embed_dim = 768  # text-embedding-004
                 logger.info("[Embeddings] Gemini text-embedding-004 (768 dim) prêt")
                 return
@@ -284,9 +280,9 @@ class LlmClient:
         # Gemini en secours (idéal : déjà configuré pour les embeddings)
         if self._provider != "gemini" and settings.gemini_api_key:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=settings.gemini_api_key)
-                self._secondary = {"provider": "gemini", "client": genai, "model": "gemini-2.0-flash-exp"}
+                from google import genai as google_genai
+                gemini_client = google_genai.Client(api_key=settings.gemini_api_key)
+                self._secondary = {"provider": "gemini", "client": gemini_client, "model": "gemini-2.0-flash"}
                 logger.info("[LLM] Secours configuré : Gemini 2.0 Flash (failover si %s sature)", self._provider)
                 return
             except Exception as e:
@@ -344,12 +340,13 @@ class LlmClient:
             )
         try:
             self.metrics.embed_calls += 1
-            response = self._embedder.embed_content(
-                model="models/text-embedding-004",
-                content=text[:8000],  # 2048 tokens approx
-                task_type="retrieval_document",
+            from google.genai import types as genai_types
+            response = self._embedder.models.embed_content(
+                model="text-embedding-004",
+                contents=text[:8000],  # 2048 tokens approx
+                config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
             )
-            embedding = response.get("embedding") if isinstance(response, dict) else response.embedding
+            embedding = response.embeddings[0].values if response.embeddings else None
             if not embedding:
                 raise ValueError("Embedding vide retourné par Gemini")
             return list(embedding)
@@ -563,19 +560,19 @@ class LlmClient:
             return response.content[0].text if response.content else ""
 
         if prov == "gemini":
-            genai = cli
-            generation_config: dict[str, Any] = {
-                "temperature": temp,
-                "max_output_tokens": max_tokens,
-            }
-            if json_mode:
-                generation_config["response_mime_type"] = "application/json"
-            model_obj = genai.GenerativeModel(
-                active_model,
+            from google.genai import types as genai_types
+            cfg = genai_types.GenerateContentConfig(
                 system_instruction=system,
-                generation_config=generation_config,
+                temperature=temp,
+                max_output_tokens=max_tokens,
             )
-            response = model_obj.generate_content(user)
+            if json_mode:
+                cfg.response_mime_type = "application/json"
+            response = cli.models.generate_content(
+                model=active_model,
+                contents=user,
+                config=cfg,
+            )
             return response.text or ""
 
         if prov == "mistral":

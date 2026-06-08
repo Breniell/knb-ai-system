@@ -6,7 +6,7 @@ pydantic-settings==2.4.0
 httpx>=0.28.0
 # LLM providers gratuits (Groq prioritaire)
 groq>=0.9.0
-google-generativeai>=0.8.0
+google-genai>=1.0.0
 mistralai>=1.0.0
 openai>=1.0.0
 # Anthropic (optionnel, payant)
