@@ -51,9 +51,9 @@ _logger = get_logger("agent-base")
 #   "fast"     → draft direct + auto-critique légère, sans recherche ni deep-reason. ~2-3 appels/agent.
 _PROFILE = os.getenv("KNB_PERF_PROFILE", "balanced").strip().lower()
 _PROFILES: dict[str, dict[str, Any]] = {
-    "quality":  {"research": True,  "reason": True,  "revisions": 2},
-    "balanced": {"research": True,  "reason": True,  "revisions": 1},
-    "fast":     {"research": False, "reason": False, "revisions": 1},
+    "quality":  {"research": True,  "reason": True,  "revisions": 2, "max_tokens": 4096},
+    "balanced": {"research": True,  "reason": True,  "revisions": 1, "max_tokens": 3000},
+    "fast":     {"research": False, "reason": False, "revisions": 0, "max_tokens": 2048},
 }
 _PROFILE_CFG = _PROFILES.get(_PROFILE, _PROFILES["balanced"])
 
@@ -110,6 +110,7 @@ class KnbAgent(BaseAgent):
     _enable_research: bool = _PROFILE_CFG["research"]
     _enable_self_critique: bool = True
     _enable_deep_reasoning: bool = _PROFILE_CFG["reason"]  # chain-of-thought avant le DRAFT
+    _draft_max_tokens: int = _PROFILE_CFG["max_tokens"]
 
     # ── À surcharger par les sous-classes ────────────────────────────────────
 
@@ -325,6 +326,7 @@ class KnbAgent(BaseAgent):
             system_prompt=self._system_prompt,
             user_prompt=user,
             fallback=fallback,
+            max_tokens=self._draft_max_tokens,
         )
         return self._normalize(data, fallback)
 
@@ -429,7 +431,8 @@ class KnbAgent(BaseAgent):
             "Produis le livrable RÉVISÉ complet (pas un diff, le livrable final)."
         )
         fallback = self._fallback_response(task, context)
-        revised = llm.json_completion(system, user, fallback=fallback, max_retries=1)
+        revised = llm.json_completion(system, user, fallback=fallback, max_retries=1,
+                                      max_tokens=self._draft_max_tokens)
         return self._normalize(revised, fallback)
 
     # ── Helpers ──────────────────────────────────────────────────────────────

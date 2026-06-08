@@ -182,16 +182,25 @@ class LlmClient:
                 from groq import Groq
                 self._client = Groq(api_key=settings.groq_api_key)
                 self._provider = "groq"
-                self._model = "llama-3.3-70b-versatile"
-                # Étagement : modèle léger très rapide (limites + élevées) pour les
-                # appels auxiliaires (planning de recherche, auto-critique), modèle
-                # puissant réservé au raisonnement et aux livrables.
-                self._groq_models = {
-                    "heavy": "llama-3.3-70b-versatile",
-                    "medium": "llama-3.3-70b-versatile",
-                    "light": "llama-3.1-8b-instant",
-                }
-                logger.info("[LLM] Groq prêt (heavy: llama-3.3-70b / light: llama-3.1-8b-instant)")
+                # En mode "fast" (plan gratuit) : llama-3.1-8b-instant sur TOUS les
+                # appels → 500k tokens/jour au lieu de 100k avec llama-3.3-70b-versatile.
+                # En mode "balanced"/"quality" : 70b réservé aux livrables complexes.
+                if _PROFILE == "fast":
+                    self._model = "llama-3.1-8b-instant"
+                    self._groq_models = {
+                        "heavy": "llama-3.1-8b-instant",
+                        "medium": "llama-3.1-8b-instant",
+                        "light": "llama-3.1-8b-instant",
+                    }
+                    logger.info("[LLM] Groq prêt — mode fast : llama-3.1-8b-instant (500k tokens/j)")
+                else:
+                    self._model = "llama-3.3-70b-versatile"
+                    self._groq_models = {
+                        "heavy": "llama-3.3-70b-versatile",
+                        "medium": "llama-3.3-70b-versatile",
+                        "light": "llama-3.1-8b-instant",
+                    }
+                    logger.info("[LLM] Groq prêt — heavy: llama-3.3-70b / light: llama-3.1-8b-instant")
                 return
             except Exception as e:
                 logger.warning("Groq indisponible: %s", e)
