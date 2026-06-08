@@ -8,23 +8,27 @@ import { ok } from "../response.js";
 export const analyticsRouter = Router();
 
 analyticsRouter.get("/analytics/overview", requireAuth, asyncHandler(async (_req, res) => {
-  const [projects, tasks, executions] = await Promise.all([
-    prisma.project.count(),
-    prisma.task.count(),
-    prisma.aiExecution.count(),
-  ]);
-
-  return ok(res, {
-    ok: true,
-    metrics: { projects, tasks, executions },
-  });
+  try {
+    const [projects, tasks, executions] = await Promise.all([
+      prisma.project.count(),
+      prisma.task.count(),
+      prisma.aiExecution.count(),
+    ]);
+    return ok(res, { ok: true, metrics: { projects, tasks, executions }, dbAvailable: true });
+  } catch {
+    return ok(res, { ok: true, metrics: { projects: 0, tasks: 0, executions: 0 }, dbAvailable: false });
+  }
 }));
 
 analyticsRouter.get("/analytics/executions", requireAuth, asyncHandler(async (_req, res) => {
-  const executions = await prisma.aiExecution.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
-  return ok(res, { ok: true, executions });
+  try {
+    const executions = await prisma.aiExecution.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    return ok(res, { ok: true, executions });
+  } catch {
+    return ok(res, { ok: true, executions: [] });
+  }
 }));
 

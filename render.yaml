@@ -38,14 +38,20 @@ services:
     plan: free
     rootDir: server
     buildCommand: npm install --include=dev && npx prisma generate && npm run build
-    startCommand: node dist/index.js
+    startCommand: npx prisma migrate deploy && node dist/index.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: SERVER_PORT
         value: "10000"
+      # DATABASE_URL: ajoutez un service PostgreSQL sur Render puis copiez
+      # l'Internal Database URL ici. Ex: postgresql://user:pass@host/db
+      - key: DATABASE_URL
+        value: ""
       - key: FIREBASE_PROJECT_ID
         value: knb-ai-system
+      # Laisser vide = mode sans-auth (client no-auth + serveur accepte les requêtes sans token).
+      # Remplir avec les credentials du compte de service Firebase pour activer l'auth en production.
       - key: FIREBASE_CLIENT_EMAIL
         value: ""
       - key: FIREBASE_PRIVATE_KEY
@@ -58,5 +64,10 @@ services:
         value: "https://knb-ai-service.onrender.com"
       - key: BOOTSTRAP_ADMIN_EMAILS
         value: knbdevsolutions@gmail.com
+      # true = accepte les requêtes sans Bearer token (mode no-auth — compatible avec
+      # le client Vercel quand VITE_FIREBASE_API_KEY est vide).
+      # Mettre à false uniquement si FIREBASE_CLIENT_EMAIL et FIREBASE_PRIVATE_KEY sont remplis.
+      - key: DEV_NO_AUTH
+        value: "true"
       - key: JWT_SECRET
         generateValue: true
