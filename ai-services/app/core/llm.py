@@ -162,7 +162,9 @@ class LlmClient:
         self._client: Any = None
         self._provider: str = "fallback"
         self._model: str = ""
-        # Provider de secours (failover) — pris quand le principal sature (429).
+        # Chaîne de providers de secours (tous essayés dans l'ordre si le principal sature).
+        self._fallback_chain: list[dict[str, Any]] = []
+        # Rétro-compatibilité : _secondary pointe sur le premier de la chaîne ou None.
         self._secondary: dict[str, Any] | None = None
         # Embedder peut être différent du provider principal (toujours Gemini si dispo)
         self._embedder: Any = None
@@ -275,40 +277,43 @@ class LlmClient:
         But : sur plan gratuit, quand le provider principal (Groq) atteint sa
         limite req/min ou tokens/min, on bascule l'appel sur un second provider
         au lieu d'échouer. Cumule les quotas gratuits et garantit la continuité
-        sur les gros projets. Priorité du secours : Gemini → Mistral → OpenRouter.
+        sur les gros projets. Chaîne complète : Gemini → Mistral → OpenRouter.
+        Tous les providers disponibles sont ajoutés (pas de retour anticipé).
         """
-        # Gemini en secours (idéal : déjà configuré pour les embeddings)
+        # Gemini en secours
         if self._provider != "gemini" and settings.gemini_api_key:
             try:
                 from google import genai as google_genai
                 gemini_client = google_genai.Client(api_key=settings.gemini_api_key)
-                self._secondary = {"provider": "gemini", "client": gemini_client, "model": "gemini-2.0-flash"}
-                logger.info("[LLM] Secours configuré : Gemini 2.0 Flash (failover si %s sature)", self._provider)
-                return
+                self._fallback_chain.append({"provider": "gemini", "client": gemini_client, "model": "gemini-2.0-flash"})
+                logger.info("[LLM] Chaîne secours +Gemini 2.0 Flash")
             except Exception as e:
                 logger.warning("Secours Gemini indisponible: %s", e)
         # Mistral en secours
         if self._provider != "mistral" and settings.mistral_api_key:
             try:
                 from mistralai import Mistral
-                self._secondary = {"provider": "mistral", "client": Mistral(api_key=settings.mistral_api_key), "model": "mistral-small-latest"}
-                logger.info("[LLM] Secours configuré : Mistral Small")
-                return
+                self._fallback_chain.append({"provider": "mistral", "client": Mistral(api_key=settings.mistral_api_key), "model": "mistral-small-latest"})
+                logger.info("[LLM] Chaîne secours +Mistral Small")
             except Exception as e:
                 logger.warning("Secours Mistral indisponible: %s", e)
         # OpenRouter en secours
         if self._provider != "openrouter" and settings.openrouter_api_key:
             try:
                 from openai import OpenAI
-                self._secondary = {
+                self._fallback_chain.append({
                     "provider": "openrouter",
                     "client": OpenAI(base_url="https://openrouter.ai/api/v1", api_key=settings.openrouter_api_key),
                     "model": "meta-llama/llama-3.3-70b-instruct:free",
-                }
-                logger.info("[LLM] Secours configuré : OpenRouter llama-3.3-70b:free")
-                return
+                })
+                logger.info("[LLM] Chaîne secours +OpenRouter llama-3.3-70b:free")
             except Exception as e:
                 logger.warning("Secours OpenRouter indisponible: %s", e)
+        # Rétro-compatibilité
+        self._secondary = self._fallback_chain[0] if self._fallback_chain else None
+        if self._fallback_chain:
+            names = " → ".join(p["provider"] for p in self._fallback_chain)
+            logger.info("[LLM] Chaîne de secours finale : %s → %s", self._provider, names)
 
     # ── API publique ────────────────────────────────────────────────────────
 
@@ -497,24 +502,27 @@ class LlmClient:
                     or (retry_secs is not None and retry_secs > 60)
                 )
                 if not transient or attempt >= _TRANSIENT_MAX_RETRIES or is_daily_limit:
-                    # Bascule sur le provider de secours avant d'abandonner
-                    if transient and self._secondary is not None:
-                        try:
-                            logger.warning("[LLM] %s indisponible → bascule sur le secours %s",
-                                           self._provider, self._secondary["provider"])
-                            self.metrics.by_provider["failover→" + self._secondary["provider"]] = (
-                                self.metrics.by_provider.get("failover→" + self._secondary["provider"], 0) + 1
-                            )
-                            return self._call_provider_once(
-                                system, user, json_mode, temperature,
-                                model_override=None, max_tokens=max_tokens,
-                                provider=self._secondary["provider"],
-                                client=self._secondary["client"],
-                                model=self._secondary["model"],
-                            )
-                        except Exception as sec_exc:  # noqa: BLE001
-                            logger.warning("[LLM] secours %s a aussi échoué : %s",
-                                           self._secondary["provider"], str(sec_exc)[:120])
+                    # Parcourt toute la chaîne de secours avant d'abandonner
+                    if transient and self._fallback_chain:
+                        for fallback in self._fallback_chain:
+                            try:
+                                logger.warning("[LLM] %s indisponible → bascule sur %s",
+                                               self._provider, fallback["provider"])
+                                self.metrics.by_provider["failover→" + fallback["provider"]] = (
+                                    self.metrics.by_provider.get("failover→" + fallback["provider"], 0) + 1
+                                )
+                                result = self._call_provider_once(
+                                    system, user, json_mode, temperature,
+                                    model_override=None, max_tokens=max_tokens,
+                                    provider=fallback["provider"],
+                                    client=fallback["client"],
+                                    model=fallback["model"],
+                                )
+                                logger.info("[LLM] secours %s a répondu avec succès", fallback["provider"])
+                                return result
+                            except Exception as fb_exc:  # noqa: BLE001
+                                logger.warning("[LLM] secours %s a aussi échoué : %s",
+                                               fallback["provider"], str(fb_exc)[:120])
                     raise
                 last_exc = exc
                 delay = retry_secs or (0.8 * (2 ** attempt))
