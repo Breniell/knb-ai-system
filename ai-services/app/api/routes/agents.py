@@ -99,6 +99,42 @@ def _resolve_agent_name(agent_id: str, registry) -> str | None:
     return None
 
 
+_GREETING_PATTERNS = {
+    "hello", "hi", "bonjour", "bonsoir", "salut", "hey", "coucou",
+    "bonne journée", "bonne soirée", "bonne nuit", "merci", "ok", "d'accord",
+    "super", "parfait", "cool", "👋", "😊",
+}
+
+def _is_greeting(message: str) -> bool:
+    """Détecte les messages conversationnels courts qui ne nécessitent pas le pipeline complet."""
+    stripped = message.strip().lower().rstrip("!?., ")
+    if stripped in _GREETING_PATTERNS:
+        return True
+    if len(stripped) <= 20 and not any(c in stripped for c in ["?", "comment", "quel", "quoi", "aide", "besoin"]):
+        return True
+    return False
+
+
+_AGENT_GREETINGS: dict[str, str] = {
+    "CommercialAgent":         "Bonjour ! Je suis votre expert commercial KNB. Que puis-je faire pour vous ? Devis, proposition, stratégie de vente, réponse à une objection… je suis là.",
+    "MarketingAgent":          "Bonjour ! Je suis votre expert marketing. Quelle est votre prochaine campagne, cible ou problématique marketing ?",
+    "CommunityManagerAgent":   "Bonjour ! Je gère votre présence digitale. Besoin d'un calendrier éditorial, d'une publication ou d'une stratégie réseaux sociaux ?",
+    "ArchitecteAgent":         "Bonjour ! Je suis votre architecte technique. Quel système voulez-vous concevoir ou auditer ?",
+    "DevFrontendAgent":        "Bonjour ! Je suis votre développeur frontend. Quel composant, page ou problème UI souhaitez-vous résoudre ?",
+    "DevBackendAgent":         "Bonjour ! Je suis votre développeur backend. API, base de données, performance… sur quoi travaillons-nous ?",
+    "DevMobileAgent":          "Bonjour ! Je suis votre développeur mobile (React Native / Flutter). Quel écran ou fonctionnalité développons-nous ?",
+    "DevOpsAgent":             "Bonjour ! Je suis votre ingénieur DevOps. CI/CD, Docker, déploiement Render/Vercel… quel est votre chantier ?",
+    "QAAgent":                 "Bonjour ! Je suis votre expert QA. Tests, bugs, critères d'acceptation… que voulez-vous valider ?",
+    "DesignerUXUIAgent":       "Bonjour ! Je suis votre designer UX/UI. Quelle expérience utilisateur voulez-vous concevoir ?",
+    "DesignerGraphiqueAgent":  "Bonjour ! Je suis votre designer graphique. Charte graphique, logo, visuels… quel projet créatif ?",
+    "RedacteurAgent":          "Bonjour ! Je suis votre rédacteur. Articles, copies, scripts… quel contenu souhaitez-vous créer ?",
+    "ChefDeProjetAgent":       "Bonjour ! Je suis votre chef de projet. Planning, roadmap, coordination d'équipe… comment vous aider ?",
+    "SupportClientAgent":      "Bonjour ! Je suis votre expert support client. Comment puis-je vous aider aujourd'hui ?",
+    "FinanceAgent":            "Bonjour ! Je suis votre expert finance. Budget, factures, trésorerie… quelle analyse souhaitez-vous ?",
+    "ReviewerAgent":           "Bonjour ! Je suis votre reviewer. Soumettez votre livrable et je l'évalue selon nos critères qualité.",
+}
+
+
 @router.post("/agents/chat")
 async def chat_with_agent(
     req: ChatRequest,
@@ -107,6 +143,49 @@ async def chat_with_agent(
     agent_name = _resolve_agent_name(req.agent_id, orchestrator.registry)
     if agent_name is None:
         return {"ok": False, "error": f"Agent '{req.agent_id}' not found"}
+
+    # Court-circuit pour les salutations : pas besoin du pipeline complet
+    if _is_greeting(req.message):
+        greeting = _AGENT_GREETINGS.get(
+            agent_name,
+            f"Bonjour ! Je suis {agent_name}. Comment puis-je vous aider ?"
+        )
+        from app.models import AgentResponse
+        return {
+            "ok": True,
+            "agent_id": req.agent_id,
+            "agent_name": agent_name,
+            "response": AgentResponse(
+                agent=agent_name,
+                summary=greeting,
+                artifacts=[],
+                followups=["Décrivez votre besoin", "Quel est votre projet ?", "Comment puis-je vous aider ?"],
+                score=1.0,
+            ).model_dump(),
+            "learned_from": [],
+        }
+
+    # Si le LLM n'est pas disponible, retourner un message clair plutôt que le fallback métier
+    if not orchestrator.llm.enabled():
+        from app.models import AgentResponse
+        return {
+            "ok": True,
+            "agent_id": req.agent_id,
+            "agent_name": agent_name,
+            "response": AgentResponse(
+                agent=agent_name,
+                summary=(
+                    "⚠️ Le service IA n'est pas disponible en ce moment. "
+                    "Aucune clé LLM (GROQ_API_KEY, GEMINI_API_KEY) n'est configurée "
+                    "sur le service knb-ai-service. Ajoutez une clé sur Render Dashboard "
+                    "→ knb-ai-service → Environment Variables."
+                ),
+                artifacts=[],
+                followups=[],
+                score=0.0,
+            ).model_dump(),
+            "learned_from": [],
+        }
 
     # Build memory snippets from conversation history
     memory_snippets: list[str] = []
@@ -144,7 +223,12 @@ async def chat_with_agent(
     subtask = SubTask(
         id="chat-task",
         title=req.message[:100],
-        description=req.message,
+        description=(
+            f"[MODE CHAT — Réponse conversationnelle attendue]\n"
+            f"Message utilisateur : {req.message}\n\n"
+            "Si le message est une question ou une demande simple, réponds directement et "
+            "concisément. Ne génère un livrable complet que si le message le justifie explicitement."
+        ),
         assigned_agent=agent_name,
         priority=1,
     )
