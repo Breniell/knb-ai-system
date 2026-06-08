@@ -103,7 +103,7 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 
 
-@app.get("/healthz")
+@app.api_route("/healthz", methods=["GET", "HEAD"])
 async def health():
     """Healthcheck enrichi avec état des composants critiques."""
     try:
