@@ -1,7 +1,7 @@
 import { env } from "../config/env.js";
 
-// 30s — laisse le temps au service de se réveiller sur plan Render gratuit.
-const AI_TIMEOUT_MS = 30_000;
+// 55s — laisse le temps au service de se réveiller (Render gratuit peut prendre 60s).
+const AI_TIMEOUT_MS = 55_000;
 
 export async function fetchAiService(path: string, init?: RequestInit) {
   const controller = new AbortController();

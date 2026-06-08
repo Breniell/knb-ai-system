@@ -59,6 +59,23 @@ async function main() {
     logger.info({ port: env.SERVER_PORT }, `KNB Server listening on http://localhost:${env.SERVER_PORT}`);
   });
 
+  // Keep-alive : ping le service IA toutes les 10 min pour éviter qu'il s'endorme
+  // sur le plan Render gratuit (spin-down après 15 min d'inactivité).
+  if (env.NODE_ENV === "production") {
+    const AI_KEEPALIVE_MS = 10 * 60 * 1000;
+    setInterval(async () => {
+      try {
+        const res = await fetch(`${env.AI_SERVICE_PUBLIC_URL}/healthz`, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        logger.debug({ status: res.status }, "[keep-alive] ping AI service");
+      } catch {
+        logger.warn("[keep-alive] AI service ne répond pas — il se réveillera à la prochaine requête utilisateur");
+      }
+    }, AI_KEEPALIVE_MS);
+    logger.info("[keep-alive] actif — ping AI service toutes les 10 min");
+  }
+
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "graceful shutdown started");
     server.close(async () => {
