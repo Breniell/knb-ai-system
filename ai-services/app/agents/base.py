@@ -22,6 +22,7 @@ RESEARCH, qui appelle `recall_knowledge` proactivement.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from abc import ABC, abstractmethod
@@ -191,8 +192,10 @@ class KnbAgent(BaseAgent):
         )
 
         fallback = {"plan": "exécution directe", "calls": []}
-        decision = llm.json_completion(system, user, fallback=fallback, max_retries=1,
-                                       complexity="light", max_tokens=700)
+        decision = await asyncio.to_thread(
+            llm.json_completion, system, user, fallback,
+            max_retries=1, complexity="light", max_tokens=700,
+        )
         raw_calls = decision.get("calls", []) if isinstance(decision, dict) else []
         if not isinstance(raw_calls, list):
             raw_calls = []
@@ -263,8 +266,10 @@ class KnbAgent(BaseAgent):
             "3. APPROCHE : Comment vais-je aborder ça, et pourquoi c'est le meilleur angle ?\n"
             "4. PIÈGES : Quels sont les 2-3 erreurs typiques à éviter dans ce type de livrable ?"
         )
-        reasoning = llm.text_completion(system, user, temperature=0.4,
-                                        complexity="heavy", max_tokens=900)
+        reasoning = await asyncio.to_thread(
+            llm.text_completion, system, user,
+            temperature=0.4, complexity="heavy", max_tokens=900,
+        )
         _logger.info(
             "deep_reason agent=%s task=%s chars=%d",
             self.name, task.title[:50], len(reasoning),
@@ -322,10 +327,9 @@ class KnbAgent(BaseAgent):
             f"{format_hint}"
         )
 
-        data = llm.json_completion(
-            system_prompt=self._system_prompt,
-            user_prompt=user,
-            fallback=fallback,
+        data = await asyncio.to_thread(
+            llm.json_completion,
+            self._system_prompt, user, fallback,
             max_tokens=self._draft_max_tokens,
         )
         return self._normalize(data, fallback)
@@ -399,8 +403,10 @@ class KnbAgent(BaseAgent):
             f"{json.dumps(draft, ensure_ascii=False)[:3500]}"
         )
         fallback = {"pass_ratio": 0.7, "issues": []}
-        return llm.json_completion(system, user, fallback=fallback, max_retries=1,
-                                   complexity="light", max_tokens=700)
+        return await asyncio.to_thread(
+            llm.json_completion, system, user, fallback,
+            max_retries=1, complexity="light", max_tokens=700,
+        )
 
     async def _revise(
         self,
@@ -431,8 +437,10 @@ class KnbAgent(BaseAgent):
             "Produis le livrable RÉVISÉ complet (pas un diff, le livrable final)."
         )
         fallback = self._fallback_response(task, context)
-        revised = llm.json_completion(system, user, fallback=fallback, max_retries=1,
-                                      max_tokens=self._draft_max_tokens)
+        revised = await asyncio.to_thread(
+            llm.json_completion, system, user, fallback,
+            max_retries=1, max_tokens=self._draft_max_tokens,
+        )
         return self._normalize(revised, fallback)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
