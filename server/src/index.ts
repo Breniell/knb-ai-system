@@ -63,15 +63,12 @@ async function main() {
   // sur le plan Render gratuit (spin-down après 15 min d'inactivité).
   if (env.NODE_ENV === "production") {
     const AI_KEEPALIVE_MS = 10 * 60 * 1000;
-    setInterval(async () => {
-      try {
-        const res = await fetch(`${env.AI_SERVICE_PUBLIC_URL}/healthz`, {
-          signal: AbortSignal.timeout(10_000),
-        });
-        logger.debug({ status: res.status }, "[keep-alive] ping AI service");
-      } catch {
-        logger.warn("[keep-alive] AI service ne répond pas — il se réveillera à la prochaine requête utilisateur");
-      }
+    setInterval(() => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 10_000);
+      fetch(`${env.AI_SERVICE_PUBLIC_URL}/healthz`, { signal: ctrl.signal })
+        .then((res) => { clearTimeout(t); logger.debug({ status: res.status }, "[keep-alive] ping AI service"); })
+        .catch(() => { clearTimeout(t); logger.warn("[keep-alive] AI service ne répond pas"); });
     }, AI_KEEPALIVE_MS);
     logger.info("[keep-alive] actif — ping AI service toutes les 10 min");
   }
