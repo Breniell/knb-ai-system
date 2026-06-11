@@ -1,7 +1,7 @@
 import { env } from "../config/env.js";
 
-// 55s — laisse le temps au service de se réveiller (Render gratuit peut prendre 60s).
-const AI_TIMEOUT_MS = 55_000;
+// 90s — OpenRouter free tier peut prendre 60-80s sur un modèle lourd.
+const AI_TIMEOUT_MS = 90_000;
 
 export async function fetchAiService(path: string, init?: RequestInit) {
   const controller = new AbortController();

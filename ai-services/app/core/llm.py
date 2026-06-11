@@ -235,14 +235,13 @@ class LlmClient:
                     api_key=settings.openrouter_api_key,
                 )
                 self._provider = "openrouter"
-                # Modèle par défaut (le plus capable gratuit disponible)
-                self._model = "meta-llama/llama-3.3-70b-instruct:free"
+                self._model = "meta-llama/llama-3.1-8b-instruct:free"
                 self._openrouter_models = {
-                    "heavy":  "meta-llama/llama-3.3-70b-instruct:free",  # raisonnement complexe
-                    "medium": "google/gemini-flash-1.5-8b:free",         # tâches intermédiaires
-                    "light":  "mistralai/mistral-7b-instruct:free",      # classification, routing
+                    "heavy":  "meta-llama/llama-3.1-8b-instruct:free",
+                    "medium": "meta-llama/llama-3.1-8b-instruct:free",
+                    "light":  "meta-llama/llama-3.1-8b-instruct:free",
                 }
-                logger.info("[LLM] OpenRouter prêt (heavy: llama-3.3-70b / medium: gemini-flash-8b / light: mistral-7b)")
+                logger.info("[LLM] OpenRouter prêt — llama-3.1-8b-instruct:free (rapide)")
                 return
             except Exception as e:
                 logger.warning("OpenRouter indisponible: %s", e)
@@ -313,9 +312,9 @@ class LlmClient:
                 self._fallback_chain.append({
                     "provider": "openrouter",
                     "client": OpenAI(base_url="https://openrouter.ai/api/v1", api_key=settings.openrouter_api_key),
-                    "model": "meta-llama/llama-3.3-70b-instruct:free",
+                    "model": "meta-llama/llama-3.1-8b-instruct:free",
                 })
-                logger.info("[LLM] Chaîne secours +OpenRouter llama-3.3-70b:free")
+                logger.info("[LLM] Chaîne secours +OpenRouter llama-3.1-8b-instruct:free")
             except Exception as e:
                 logger.warning("Secours OpenRouter indisponible: %s", e)
         # Rétro-compatibilité
