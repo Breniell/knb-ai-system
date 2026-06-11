@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -25,6 +26,8 @@ from typing import Any
 from app.core.settings import settings
 
 logger = logging.getLogger(__name__)
+
+_PROFILE = os.getenv("KNB_PERF_PROFILE", "balanced").strip().lower()
 
 # Nombre de réessais sur erreurs transitoires (429, timeouts, 5xx) avant abandon.
 _TRANSIENT_MAX_RETRIES = 3
