@@ -24,3 +24,5 @@ numpy>=2.0.0
 beautifulsoup4>=4.12.0
 # Vector memory (Qdrant)
 qdrant-client>=1.7.0
+# Web search
+ddgs>=7.0.0

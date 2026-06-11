@@ -69,6 +69,22 @@ def _search_brave(query: str, max_results: int) -> list[SearchResult]:
 
 
 def _search_duckduckgo(query: str, max_results: int) -> list[SearchResult]:
+    # Tentative avec ddgs (vrais résultats web)
+    try:
+        from ddgs import DDGS
+        results = []
+        for item in DDGS().text(query, max_results=max_results):
+            results.append(SearchResult(
+                title=item.get("title", ""),
+                url=item.get("href", ""),
+                snippet=item.get("body", "")[:300],
+            ))
+        if results:
+            return results
+    except Exception as exc:
+        _logger.warning("ddgs failed query=%s reason=%s — repli Instant Answer", query[:60], exc)
+
+    # Repli : DuckDuckGo Instant Answer API
     url = "https://api.duckduckgo.com/"
     params = {"q": query, "format": "json", "no_html": "1", "skip_disambig": "1"}
     with httpx.Client(timeout=_TIMEOUT) as client:
@@ -76,14 +92,12 @@ def _search_duckduckgo(query: str, max_results: int) -> list[SearchResult]:
         resp.raise_for_status()
     data = resp.json()
     results = []
-    # AbstractText gives a direct answer
     if data.get("AbstractText"):
         results.append(SearchResult(
             title=data.get("Heading", query),
             url=data.get("AbstractURL", ""),
             snippet=data.get("AbstractText", "")[:300],
         ))
-    # RelatedTopics gives more results
     for topic in data.get("RelatedTopics", [])[:max_results]:
         if isinstance(topic, dict) and topic.get("Text"):
             results.append(SearchResult(
