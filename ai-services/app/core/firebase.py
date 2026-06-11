@@ -35,6 +35,42 @@ def _init_firebase():
             logger.info("Firebase: réutilisation de l'app existante")
             return _db
 
+        # Initialisation par variables d'environnement (prioritaire sur les fichiers)
+        svc_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+        client_email = os.environ.get("FIREBASE_CLIENT_EMAIL", "")
+        private_key = os.environ.get("FIREBASE_PRIVATE_KEY", "")
+        project_id = os.environ.get("FIREBASE_PROJECT_ID", "")
+
+        if svc_json:
+            try:
+                import json as _json
+                cred = credentials.Certificate(_json.loads(svc_json))
+                firebase_admin.initialize_app(cred)
+                _db = firestore.client()
+                logger.info("Firebase: connecté via FIREBASE_SERVICE_ACCOUNT_JSON")
+                return _db
+            except Exception as e:
+                logger.warning("Firebase: FIREBASE_SERVICE_ACCOUNT_JSON invalide (%s)", e)
+
+        elif client_email and private_key and project_id:
+            try:
+                # Render stocke souvent les \n en littéral — on normalise
+                normalized_key = private_key.strip('"').strip("'").replace("\\n", "\n")
+                svc_dict = {
+                    "type": "service_account",
+                    "project_id": project_id,
+                    "client_email": client_email,
+                    "private_key": normalized_key,
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                }
+                cred = credentials.Certificate(svc_dict)
+                firebase_admin.initialize_app(cred)
+                _db = firestore.client()
+                logger.info("Firebase: connecté via FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY")
+                return _db
+            except Exception as e:
+                logger.warning("Firebase: initialisation par variables d'env échouée (%s)", e)
+
         if cred_path and os.path.isfile(cred_path):
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
