@@ -30,8 +30,8 @@ logger = logging.getLogger("scheduler")
 _BOOTSTRAP_DELAY_SECONDS = 30
 _LOOP_INTERVAL_HOURS = 24
 _PER_AGENT_DELAY_SECONDS = 5  # pause entre agents pour les rate limits
-_MAX_AGENTS_PER_CYCLE = 5     # limite de débit (free tier LLMs)
-_TOPICS_PER_AGENT = 3         # topics formés par agent par cycle
+_MAX_AGENTS_PER_CYCLE = 3     # réduit de 5 → économise les quotas gratuits
+_TOPICS_PER_AGENT = 2         # réduit de 3 → idem
 
 
 class TrainingScheduler:
@@ -85,7 +85,8 @@ class TrainingScheduler:
     async def _loop(self) -> None:
         try:
             await asyncio.sleep(_BOOTSTRAP_DELAY_SECONDS)
-            await self._run_cycle(force=False)
+            if await self._bootstrap_needed():
+                await self._run_cycle(force=False)
             interval_sec = _LOOP_INTERVAL_HOURS * 3600
             while not self._stop_event.is_set():
                 try:
@@ -165,6 +166,8 @@ class TrainingScheduler:
 
                 await asyncio.sleep(_PER_AGENT_DELAY_SECONDS)
 
+            await self._persist_cycle_timestamp()
+
         except Exception as exc:
             logger.error("scheduler.cycle.error: %s", exc)
             report["error"] = str(exc)[:200]
@@ -183,6 +186,44 @@ class TrainingScheduler:
                 elapsed,
             )
         return report
+
+    async def _bootstrap_needed(self) -> bool:
+        """Return False (et logue) si un cycle s'est terminé il y a moins de _LOOP_INTERVAL_HOURS."""
+        try:
+            from app.core.firebase import get_firestore_client
+            db = get_firestore_client()
+            if db is None:
+                return True  # Firestore indisponible → comportement normal
+            doc_ref = db.collection("schedulerState").document("training")
+            doc = await asyncio.to_thread(doc_ref.get)
+            if not doc.exists:
+                return True
+            last_at = doc.to_dict().get("last_cycle_at")
+            if last_at is None:
+                return True
+            age_hours = (datetime.now(timezone.utc) - last_at).total_seconds() / 3600
+            if age_hours < _LOOP_INTERVAL_HOURS:
+                logger.info(
+                    "scheduler.bootstrap_skipped last_cycle=%s (%.1fh ago)",
+                    last_at.isoformat(), age_hours,
+                )
+                return False
+            return True
+        except Exception as exc:
+            logger.warning("scheduler.bootstrap_check_failed: %s", exc)
+            return True  # Non-fatal : on exécute le bootstrap normalement
+
+    async def _persist_cycle_timestamp(self) -> None:
+        """Écrit l'horodatage du dernier cycle dans Firestore (collection schedulerState)."""
+        try:
+            from app.core.firebase import get_firestore_client
+            db = get_firestore_client()
+            if db is None:
+                return
+            doc_ref = db.collection("schedulerState").document("training")
+            await asyncio.to_thread(doc_ref.set, {"last_cycle_at": datetime.now(timezone.utc)})
+        except Exception as exc:
+            logger.warning("scheduler.persist_timestamp_failed: %s", exc)
 
     def _get_llm(self):
         try:

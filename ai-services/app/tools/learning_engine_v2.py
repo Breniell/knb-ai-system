@@ -77,7 +77,7 @@ async def synthesize_learning(
     fallback = [f"[{topic}] documentation consultée mais non synthétisée (LLM indisponible)"]
 
     from app.core.llm import repair_and_parse_json
-    raw = llm.text_completion(system, user, temperature=0.2)
+    raw = llm.text_completion(system, user, temperature=0.2, complexity="light")
     if not raw:
         return fallback
 
